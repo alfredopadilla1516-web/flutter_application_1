@@ -8,7 +8,6 @@ import 'package:flutter_tts/flutter_tts.dart';
 const String kGeminiApiKey =
     'AQ.Ab8RN6JsYu_dS5nAQC75kL7vey_QGOG3G0NvtOOYOs8TuBQycQ';
 const String kModel = 'gemini-1.5-flash';
-
 // ---------- PALETA DE COLORES ----------
 const Color kColorPrimary = Color(0xFF7C3AED);
 const Color kColorSecondary = Color(0xFFEC4899);
