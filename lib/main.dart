@@ -1,12 +1,13 @@
 import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_tts/flutter_tts.dart';
 
-// ⚠️ PEGA TU API KEY DE GOOGLE AI STUDIO AQUÍ (aistudio.google.com -> Get API key)
+// ⚠️ PEGA TU API KEY DE GOOGLE AI STUDIO AQUÍ
 const String kGeminiApiKey =
     'AQ.Ab8RN6JSv2Ik2QvTT8cqpQvAtcx6riJocYm3aYmR0B-Hm7-Ddg';
-const String kModel = 'gemini-3.6-flash';
+const String kModel = 'gemini-1.5-flash';
 
 // ---------- PALETA DE COLORES ----------
 const Color kColorPrimary = Color(0xFF7C3AED);
@@ -46,32 +47,27 @@ const List<LevelDef> kLevels = [
   LevelDef(
     name: 'Cultura general',
     emoji: '🌍',
-    topicPrompt:
-        'cultura general variada (historia, ciencia, geografía, arte, deportes, tecnología), con dificultad fácil, apta para principiantes',
+    topicPrompt: 'cultura general variada, dificultad fácil',
   ),
   LevelDef(
     name: 'Ciencia y naturaleza',
     emoji: '🧪',
-    topicPrompt:
-        'ciencia, biología, física, química y naturaleza, con dificultad media',
+    topicPrompt: 'ciencia, biología, física, química, dificultad media',
   ),
   LevelDef(
     name: 'Historia mundial',
     emoji: '🏛️',
-    topicPrompt:
-        'historia mundial (civilizaciones antiguas, guerras, eventos importantes, personajes históricos), con dificultad media-alta',
+    topicPrompt: 'historia mundial, dificultad media-alta',
   ),
   LevelDef(
     name: 'Arte y literatura',
     emoji: '🎨',
-    topicPrompt:
-        'arte, literatura, música clásica y cine, con dificultad alta, preguntas específicas para conocedores',
+    topicPrompt: 'arte, literatura, música clásica, dificultad alta',
   ),
   LevelDef(
     name: 'Reto experto',
     emoji: '🚀',
-    topicPrompt:
-        'una mezcla de todos los temas anteriores, con dificultad muy alta, tipo examen experto',
+    topicPrompt: 'mezcla de todos los temas, dificultad muy alta',
   ),
 ];
 
@@ -134,11 +130,8 @@ class _TriviaScreenState extends State<TriviaScreen> {
   int? selectedIndex;
   bool answered = false;
 
-  // Progreso general (histórico, no se reinicia nunca)
   int totalScore = 0;
   int totalAnswered = 0;
-
-  // Progreso del nivel actual (esto sí se reinicia cada 25 preguntas o al perder)
   int levelIndex = 0;
   int questionsInLevel = 0;
   int correctInLevel = 0;
@@ -150,6 +143,15 @@ class _TriviaScreenState extends State<TriviaScreen> {
   double speechRate = 0.62;
   List<Map<String, String>> availableVoices = [];
   Map<String, String>? selectedVoice;
+
+  final List<String> _loadingPhrases = [
+    'Conectando neuronas artificiales...',
+    'Buscando en la enciclopedia galáctica...',
+    'Formulando una pregunta desafiante...',
+    'Consultando a la IA...',
+    'Preparando el siguiente reto...',
+  ];
+  String _currentLoadingPhrase = 'Cargando...';
 
   LevelDef get currentLevel => kLevels[levelIndex];
 
@@ -186,13 +188,7 @@ class _TriviaScreenState extends State<TriviaScreen> {
         final n = v['name']!.toLowerCase();
         if (n.contains('female') ||
             n.contains('mujer') ||
-            n.contains('helena') ||
-            n.contains('sabina') ||
-            n.contains('paulina') ||
-            n.contains('lucia') ||
-            n.contains('monica') ||
-            n.contains('mónica') ||
-            n.contains('elena')) {
+            n.contains('helena')) {
           femaleVoice = v;
           break;
         }
@@ -252,6 +248,8 @@ class _TriviaScreenState extends State<TriviaScreen> {
       errorMessage = null;
       answered = false;
       selectedIndex = null;
+      _currentLoadingPhrase =
+          _loadingPhrases[Random().nextInt(_loadingPhrases.length)];
     });
 
     try {
@@ -262,15 +260,13 @@ class _TriviaScreenState extends State<TriviaScreen> {
       final prompt =
           '''
 Genera UNA pregunta de trivia en español sobre ${currentLevel.topicPrompt}.$avoidList
-
 Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional ni bloques de código, con este formato exacto:
 {
   "question": "texto de la pregunta",
   "options": ["opción A", "opción B", "opción C", "opción D"],
   "correct_index": 0,
-  "explanation": "breve explicación de por qué es correcta, en una oración clara y didáctica"
+  "explanation": "breve explicación de por qué es correcta"
 }
-correct_index debe ser el índice (0 a 3) de la opción correcta dentro de "options".
 ''';
 
       final url = Uri.parse(
@@ -296,9 +292,7 @@ correct_index debe ser el índice (0 a 3) de la opción correcta dentro de "opti
       );
 
       if (response.statusCode != 200) {
-        throw Exception(
-          'Error de la API (${response.statusCode}): ${response.body}',
-        );
+        throw Exception('Error de la API (${response.statusCode})');
       }
 
       final data = jsonDecode(response.body);
@@ -320,7 +314,8 @@ correct_index debe ser el índice (0 a 3) de la opción correcta dentro de "opti
       _speakQuestion(newQuestion);
     } catch (e) {
       setState(() {
-        errorMessage = 'No se pudo generar la pregunta: $e';
+        errorMessage =
+            'No se pudo generar la pregunta. Revisa tu conexión o API Key.';
         isLoading = false;
       });
     }
@@ -355,7 +350,6 @@ correct_index debe ser el índice (0 a 3) de la opción correcta dentro de "opti
     _speak(spokenMessage);
   }
 
-  // Decide si continuar con otra pregunta del nivel o cerrar el nivel (25 preguntas alcanzadas).
   void _onNextPressed() {
     if (questionsInLevel >= kQuestionsPerLevel) {
       _showLevelResult();
@@ -367,19 +361,6 @@ correct_index debe ser el índice (0 a 3) de la opción correcta dentro de "opti
   void _showLevelResult() {
     final passed = correctInLevel >= kQuestionsToPass;
     final isLastLevel = levelIndex == kLevels.length - 1;
-
-    final String spokenResult;
-    if (passed && !isLastLevel) {
-      spokenResult =
-          '¡Felicidades! Acertaste $correctInLevel de $kQuestionsPerLevel preguntas y avanzas al siguiente nivel: ${kLevels[levelIndex + 1].name}.';
-    } else if (passed && isLastLevel) {
-      spokenResult =
-          '¡Increíble! Completaste el nivel más difícil con $correctInLevel de $kQuestionsPerLevel preguntas correctas.';
-    } else {
-      spokenResult =
-          'Perdiste. Solo acertaste $correctInLevel de $kQuestionsPerLevel preguntas, necesitabas al menos $kQuestionsToPass. Vuelves a intentar el nivel ${currentLevel.name}.';
-    }
-    _speak(spokenResult);
 
     showDialog(
       context: context,
@@ -431,9 +412,7 @@ correct_index debe ser el índice (0 a 3) de la opción correcta dentro de "opti
                 onPressed: () {
                   Navigator.of(context).pop();
                   setState(() {
-                    if (passed && !isLastLevel) {
-                      levelIndex++;
-                    }
+                    if (passed && !isLastLevel) levelIndex++;
                     questionsInLevel = 0;
                     correctInLevel = 0;
                     previousQuestions.clear();
@@ -624,25 +603,6 @@ correct_index debe ser el índice (0 a 3) de la opción correcta dentro de "opti
                   '$questionsInLevel/$kQuestionsPerLevel',
                   style: const TextStyle(color: Colors.white, fontSize: 13),
                 ),
-                const SizedBox(width: 10),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: kColorSuccess.withOpacity(0.85),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    '✅ $correctInLevel',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
               ],
             ),
             const SizedBox(height: 8),
@@ -656,17 +616,6 @@ correct_index debe ser el índice (0 a 3) de la opción correcta dentro de "opti
                   correctInLevel >= kQuestionsToPass
                       ? kColorSuccess
                       : kColorSecondary,
-                ),
-              ),
-            ),
-            const SizedBox(height: 4),
-            Align(
-              alignment: Alignment.centerRight,
-              child: Text(
-                'Meta: $kQuestionsToPass/$kQuestionsPerLevel para avanzar · Total: $totalScore/$totalAnswered',
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.85),
-                  fontSize: 11,
                 ),
               ),
             ),
@@ -694,16 +643,32 @@ correct_index debe ser el índice (0 a 3) de la opción correcta dentro de "opti
   Widget _buildBody() {
     if (isLoading) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const CircularProgressIndicator(color: Colors.white),
-            const SizedBox(height: 16),
-            Text(
-              'Generando pregunta con IA...',
-              style: TextStyle(color: Colors.white.withOpacity(0.9)),
-            ),
-          ],
+        child: TweenAnimationBuilder(
+          tween: Tween<double>(begin: 0.8, end: 1.2),
+          duration: const Duration(milliseconds: 800),
+          curve: Curves.easeInOut,
+          builder: (context, scale, child) {
+            return Transform.scale(scale: scale, child: child);
+          },
+          onEnd: () {
+            if (mounted && isLoading) setState(() {});
+          },
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.smart_toy, size: 64, color: Colors.white),
+              const SizedBox(height: 24),
+              Text(
+                _currentLoadingPhrase,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -741,7 +706,21 @@ correct_index debe ser el índice (0 a 3) de la opción correcta dentro de "opti
     if (currentQuestion == null) return const SizedBox.shrink();
 
     return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 350),
+      duration: const Duration(milliseconds: 600),
+      switchInCurve: Curves.easeOutBack,
+      switchOutCurve: Curves.easeIn,
+      transitionBuilder: (child, animation) {
+        return FadeTransition(
+          opacity: animation,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0.0, 0.2),
+              end: Offset.zero,
+            ).animate(animation),
+            child: child,
+          ),
+        );
+      },
       child: SingleChildScrollView(
         key: ValueKey(currentQuestion!.question),
         child: Column(
@@ -774,7 +753,7 @@ correct_index debe ser el índice (0 a 3) de la opción correcta dentro de "opti
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.25),
+            color: Colors.black.withOpacity(0.15),
             blurRadius: 20,
             offset: const Offset(0, 10),
           ),
@@ -816,12 +795,13 @@ correct_index debe ser el índice (0 a 3) de la opción correcta dentro de "opti
     final baseColor = kOptionColors[index % kOptionColors.length];
 
     Color bg = baseColor;
-    const Color fg = Colors.white;
     double opacity = 1.0;
+    double scale = 1.0;
 
     if (answered) {
       if (index == currentQuestion!.correctIndex) {
         bg = kColorSuccess;
+        scale = 1.02;
       } else if (index == selectedIndex) {
         bg = kColorError;
       } else {
@@ -831,63 +811,72 @@ correct_index debe ser el índice (0 a 3) de la opción correcta dentro de "opti
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6.0),
-      child: AnimatedOpacity(
+      child: AnimatedScale(
+        scale: scale,
         duration: const Duration(milliseconds: 300),
-        opacity: opacity,
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(18),
-            onTap: answered ? null : () => _selectAnswer(index),
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 18),
-              decoration: BoxDecoration(
-                color: bg,
-                borderRadius: BorderRadius.circular(18),
-                boxShadow: [
-                  BoxShadow(
-                    color: bg.withOpacity(0.4),
-                    blurRadius: 10,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 32,
-                    height: 32,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.25),
-                      shape: BoxShape.circle,
+        curve: Curves.easeOutBack,
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 300),
+          opacity: opacity,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(18),
+              onTap: answered ? null : () => _selectAnswer(index),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 16,
+                  horizontal: 18,
+                ),
+                decoration: BoxDecoration(
+                  color: bg,
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: [
+                    BoxShadow(
+                      color: bg.withOpacity(0.4),
+                      blurRadius: 10,
+                      offset: const Offset(0, 5),
                     ),
-                    child: Text(
-                      letras[index],
-                      style: const TextStyle(
-                        color: fg,
-                        fontWeight: FontWeight.bold,
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.25),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Text(
+                        letras[index],
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Text(
-                      option,
-                      style: const TextStyle(
-                        color: fg,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Text(
+                        option,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
-                  ),
-                  if (answered && index == currentQuestion!.correctIndex)
-                    const Icon(Icons.check_circle, color: Colors.white),
-                  if (answered &&
-                      index == selectedIndex &&
-                      index != currentQuestion!.correctIndex)
-                    const Icon(Icons.cancel, color: Colors.white),
-                ],
+                    if (answered && index == currentQuestion!.correctIndex)
+                      const Icon(Icons.check_circle, color: Colors.white),
+                    if (answered &&
+                        index == selectedIndex &&
+                        index != currentQuestion!.correctIndex)
+                      const Icon(Icons.cancel, color: Colors.white),
+                  ],
+                ),
               ),
             ),
           ),
@@ -900,7 +889,9 @@ correct_index debe ser el índice (0 a 3) de la opción correcta dentro de "opti
     final correct = selectedIndex == currentQuestion!.correctIndex;
     final color = correct ? kColorSuccess : kColorWarning;
 
-    return Container(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeInOut,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -923,7 +914,7 @@ correct_index debe ser el índice (0 a 3) de la opción correcta dentro de "opti
                 Text(
                   correct
                       ? '¡Correcto! 🎉'
-                      : 'La respuesta correcta era "${currentQuestion!.options[currentQuestion!.correctIndex]}"',
+                      : 'La respuesta era "${currentQuestion!.options[currentQuestion!.correctIndex]}"',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     color: color,
@@ -937,15 +928,6 @@ correct_index debe ser el índice (0 a 3) de la opción correcta dentro de "opti
                 ),
               ],
             ),
-          ),
-          IconButton(
-            icon: Icon(Icons.volume_up, color: color),
-            onPressed: () {
-              final msg = correct
-                  ? '¡Correcto! La razón es: ${currentQuestion!.explanation}'
-                  : 'La respuesta correcta era ${currentQuestion!.options[currentQuestion!.correctIndex]}. La razón es: ${currentQuestion!.explanation}';
-              _speak(msg);
-            },
           ),
         ],
       ),
@@ -980,7 +962,7 @@ correct_index debe ser el índice (0 a 3) de la opción correcta dentro de "opti
               children: [
                 Text(
                   isLastQuestionOfLevel
-                      ? 'Ver resultado del nivel'
+                      ? 'Ver resultado'
                       : 'Siguiente pregunta',
                   style: const TextStyle(
                     color: Colors.white,
