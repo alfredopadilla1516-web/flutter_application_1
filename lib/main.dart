@@ -4,9 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_tts/flutter_tts.dart';
 
-// ⚠️ PEGA TU API KEY DE GOOGLE AI STUDIO AQUÍ
+// ⚠️ Coloca tu nueva API key limpia aquí directamente para probar
 const String kGeminiApiKey =
-    'AQ.Ab8RN6JSv2Ik2QvTT8cqpQvAtcx6riJocYm3aYmR0B-Hm7-Ddg';
+    'AQ.Ab8RN6JsYu_dS5nAQC75kL7vey_QGOG3G0NvtOOYOs8TuBQycQ';
 const String kModel = 'gemini-1.5-flash';
 
 // ---------- PALETA DE COLORES ----------
