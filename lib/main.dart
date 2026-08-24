@@ -6,8 +6,8 @@ import 'package:flutter_tts/flutter_tts.dart';
 
 // ⚠️ Coloca tu nueva API key limpia aquí directamente para probar
 const String kGeminiApiKey =
-    'AQ.Ab8RN6JsYu_dS5nAQC75kL7vey_QGOG3G0NvtOOYOs8TuBQycQ';
-const String kModel = 'gemini-1.5-flash';
+    'AQ.Ab8RN6IEcyhssJzivt5f-gQhPSfp3eKPE2NSGZCsg3MPi9ot9g';
+const String kModel = 'gemini-3.6-flash';
 // ---------- PALETA DE COLORES ----------
 const Color kColorPrimary = Color(0xFF7C3AED);
 const Color kColorSecondary = Color(0xFFEC4899);
