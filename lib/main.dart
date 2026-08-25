@@ -1,13 +1,13 @@
 import 'dart:convert';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_tts/flutter_tts.dart';
 
-// ⚠️ Coloca tu nueva API key limpia aquí directamente para probar
+// ⚠️ PEGA TU API KEY DE GOOGLE AI STUDIO AQUÍ (aistudio.google.com -> Get API key)
 const String kGeminiApiKey =
     'AQ.Ab8RN6IxxlFycsuH3dlFM2C1ZOz8Osh--lKiJtmUVS9XT-oNhw';
 const String kModel = 'gemini-3.6-flash';
+
 // ---------- PALETA DE COLORES ----------
 const Color kColorPrimary = Color(0xFF7C3AED);
 const Color kColorSecondary = Color(0xFFEC4899);
@@ -42,31 +42,84 @@ class LevelDef {
   });
 }
 
+// ---------- IDIOMAS DISPONIBLES (nuevo: selector de idioma) ----------
+class LanguageOption {
+  final String code; // código interno
+  final String label; // nombre mostrado en el botón
+  final String flag; // emoji de bandera
+  final String ttsLocale; // código de idioma para la voz (texto a voz)
+  final String promptName; // nombre del idioma que se le pide a la IA
+
+  const LanguageOption({
+    required this.code,
+    required this.label,
+    required this.flag,
+    required this.ttsLocale,
+    required this.promptName,
+  });
+}
+
+const List<LanguageOption> kLanguages = [
+  LanguageOption(
+    code: 'es',
+    label: 'Español',
+    flag: '🇪🇸',
+    ttsLocale: 'es-ES',
+    promptName: 'español',
+  ),
+  LanguageOption(
+    code: 'en',
+    label: 'English',
+    flag: '🇺🇸',
+    ttsLocale: 'en-US',
+    promptName: 'inglés (English)',
+  ),
+  LanguageOption(
+    code: 'pt',
+    label: 'Português',
+    flag: '🇧🇷',
+    ttsLocale: 'pt-BR',
+    promptName: 'portugués (Português)',
+  ),
+  LanguageOption(
+    code: 'fr',
+    label: 'Français',
+    flag: '🇫🇷',
+    ttsLocale: 'fr-FR',
+    promptName: 'francés (Français)',
+  ),
+];
+
 const List<LevelDef> kLevels = [
   LevelDef(
     name: 'Cultura general',
     emoji: '🌍',
-    topicPrompt: 'cultura general variada, dificultad fácil',
+    topicPrompt:
+        'cultura general variada (historia, ciencia, geografía, arte, deportes, tecnología), con dificultad fácil, apta para principiantes',
   ),
   LevelDef(
     name: 'Ciencia y naturaleza',
     emoji: '🧪',
-    topicPrompt: 'ciencia, biología, física, química, dificultad media',
+    topicPrompt:
+        'ciencia, biología, física, química y naturaleza, con dificultad media',
   ),
   LevelDef(
     name: 'Historia mundial',
     emoji: '🏛️',
-    topicPrompt: 'historia mundial, dificultad media-alta',
+    topicPrompt:
+        'historia mundial (civilizaciones antiguas, guerras, eventos importantes, personajes históricos), con dificultad media-alta',
   ),
   LevelDef(
     name: 'Arte y literatura',
     emoji: '🎨',
-    topicPrompt: 'arte, literatura, música clásica, dificultad alta',
+    topicPrompt:
+        'arte, literatura, música clásica y cine, con dificultad alta, preguntas específicas para conocedores',
   ),
   LevelDef(
     name: 'Reto experto',
     emoji: '🚀',
-    topicPrompt: 'mezcla de todos los temas, dificultad muy alta',
+    topicPrompt:
+        'una mezcla de todos los temas anteriores, con dificultad muy alta, tipo examen experto',
   ),
 ];
 
@@ -129,28 +182,24 @@ class _TriviaScreenState extends State<TriviaScreen> {
   int? selectedIndex;
   bool answered = false;
 
+  // Progreso general (histórico, no se reinicia nunca)
   int totalScore = 0;
   int totalAnswered = 0;
+
+  // Progreso del nivel actual (esto sí se reinicia cada 25 preguntas o al perder)
   int levelIndex = 0;
   int questionsInLevel = 0;
   int correctInLevel = 0;
 
   bool voiceEnabled = true;
+  int selectedLanguageIndex = 0; // 0 = Español, por defecto
+  LanguageOption get currentLanguage => kLanguages[selectedLanguageIndex];
   final List<String> previousQuestions = [];
   final FlutterTts _tts = FlutterTts();
 
   double speechRate = 0.62;
   List<Map<String, String>> availableVoices = [];
   Map<String, String>? selectedVoice;
-
-  final List<String> _loadingPhrases = [
-    'Conectando neuronas artificiales...',
-    'Buscando en la enciclopedia galáctica...',
-    'Formulando una pregunta desafiante...',
-    'Consultando a la IA...',
-    'Preparando el siguiente reto...',
-  ];
-  String _currentLoadingPhrase = 'Cargando...';
 
   LevelDef get currentLevel => kLevels[levelIndex];
 
@@ -187,7 +236,13 @@ class _TriviaScreenState extends State<TriviaScreen> {
         final n = v['name']!.toLowerCase();
         if (n.contains('female') ||
             n.contains('mujer') ||
-            n.contains('helena')) {
+            n.contains('helena') ||
+            n.contains('sabina') ||
+            n.contains('paulina') ||
+            n.contains('lucia') ||
+            n.contains('monica') ||
+            n.contains('mónica') ||
+            n.contains('elena')) {
           femaleVoice = v;
           break;
         }
@@ -247,8 +302,6 @@ class _TriviaScreenState extends State<TriviaScreen> {
       errorMessage = null;
       answered = false;
       selectedIndex = null;
-      _currentLoadingPhrase =
-          _loadingPhrases[Random().nextInt(_loadingPhrases.length)];
     });
 
     try {
@@ -258,14 +311,17 @@ class _TriviaScreenState extends State<TriviaScreen> {
 
       final prompt =
           '''
-Genera UNA pregunta de trivia en español sobre ${currentLevel.topicPrompt}.$avoidList
+Genera UNA pregunta de trivia en ${currentLanguage.promptName} sobre ${currentLevel.topicPrompt}.$avoidList
+Todo el contenido (pregunta, opciones y explicación) debe estar escrito en ${currentLanguage.promptName}.
+
 Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional ni bloques de código, con este formato exacto:
 {
   "question": "texto de la pregunta",
   "options": ["opción A", "opción B", "opción C", "opción D"],
   "correct_index": 0,
-  "explanation": "breve explicación de por qué es correcta"
+  "explanation": "breve explicación de por qué es correcta, en una oración clara y didáctica"
 }
+correct_index debe ser el índice (0 a 3) de la opción correcta dentro de "options".
 ''';
 
       final url = Uri.parse(
@@ -291,7 +347,9 @@ Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional ni bloques 
       );
 
       if (response.statusCode != 200) {
-        throw Exception('Error de la API (${response.statusCode})');
+        throw Exception(
+          'Error de la API (${response.statusCode}): ${response.body}',
+        );
       }
 
       final data = jsonDecode(response.body);
@@ -313,8 +371,7 @@ Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional ni bloques 
       _speakQuestion(newQuestion);
     } catch (e) {
       setState(() {
-        errorMessage =
-            'No se pudo generar la pregunta. Revisa tu conexión o API Key.';
+        errorMessage = 'No se pudo generar la pregunta: $e';
         isLoading = false;
       });
     }
@@ -349,6 +406,7 @@ Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional ni bloques 
     _speak(spokenMessage);
   }
 
+  // Decide si continuar con otra pregunta del nivel o cerrar el nivel (25 preguntas alcanzadas).
   void _onNextPressed() {
     if (questionsInLevel >= kQuestionsPerLevel) {
       _showLevelResult();
@@ -360,6 +418,19 @@ Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional ni bloques 
   void _showLevelResult() {
     final passed = correctInLevel >= kQuestionsToPass;
     final isLastLevel = levelIndex == kLevels.length - 1;
+
+    final String spokenResult;
+    if (passed && !isLastLevel) {
+      spokenResult =
+          '¡Felicidades! Acertaste $correctInLevel de $kQuestionsPerLevel preguntas y avanzas al siguiente nivel: ${kLevels[levelIndex + 1].name}.';
+    } else if (passed && isLastLevel) {
+      spokenResult =
+          '¡Increíble! Completaste el nivel más difícil con $correctInLevel de $kQuestionsPerLevel preguntas correctas.';
+    } else {
+      spokenResult =
+          'Perdiste. Solo acertaste $correctInLevel de $kQuestionsPerLevel preguntas, necesitabas al menos $kQuestionsToPass. Vuelves a intentar el nivel ${currentLevel.name}.';
+    }
+    _speak(spokenResult);
 
     showDialog(
       context: context,
@@ -411,7 +482,9 @@ Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional ni bloques 
                 onPressed: () {
                   Navigator.of(context).pop();
                   setState(() {
-                    if (passed && !isLastLevel) levelIndex++;
+                    if (passed && !isLastLevel) {
+                      levelIndex++;
+                    }
                     questionsInLevel = 0;
                     correctInLevel = 0;
                     previousQuestions.clear();
@@ -423,6 +496,67 @@ Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional ni bloques 
                   style: TextStyle(color: Colors.white),
                 ),
               ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Cambia el idioma activo: actualiza la voz y pide una pregunta nueva en ese idioma.
+  Future<void> _changeLanguage(int index) async {
+    Navigator.of(context).pop(); // cierra la ventana de selección
+    setState(() => selectedLanguageIndex = index);
+
+    // Actualiza el idioma de la voz y vuelve a cargar las voces disponibles para ese idioma.
+    await _tts.setLanguage(currentLanguage.ttsLocale);
+    await _loadVoices();
+
+    // Pide una pregunta nueva, ya en el idioma recién elegido.
+    _fetchNewQuestion();
+  }
+
+  void _openLanguageSettings() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text('🌐 Elige el idioma'),
+          content: SizedBox(
+            width: 280,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: List.generate(kLanguages.length, (index) {
+                final lang = kLanguages[index];
+                final isSelected = index == selectedLanguageIndex;
+                return ListTile(
+                  leading: Text(
+                    lang.flag,
+                    style: const TextStyle(fontSize: 24),
+                  ),
+                  title: Text(
+                    lang.label,
+                    style: TextStyle(
+                      fontWeight: isSelected
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                    ),
+                  ),
+                  trailing: isSelected
+                      ? const Icon(Icons.check_circle, color: kColorPrimary)
+                      : null,
+                  onTap: () => _changeLanguage(index),
+                );
+              }),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancelar'),
             ),
           ],
         );
@@ -561,6 +695,8 @@ Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional ni bloques 
               ),
             ),
           ),
+          _iconPill(icon: Icons.language, onTap: _openLanguageSettings),
+          const SizedBox(width: 8),
           _iconPill(icon: Icons.settings_voice, onTap: _openVoiceSettings),
           const SizedBox(width: 8),
           _iconPill(
@@ -602,6 +738,25 @@ Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional ni bloques 
                   '$questionsInLevel/$kQuestionsPerLevel',
                   style: const TextStyle(color: Colors.white, fontSize: 13),
                 ),
+                const SizedBox(width: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: kColorSuccess.withOpacity(0.85),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '✅ $correctInLevel',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 8),
@@ -615,6 +770,17 @@ Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional ni bloques 
                   correctInLevel >= kQuestionsToPass
                       ? kColorSuccess
                       : kColorSecondary,
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                'Meta: $kQuestionsToPass/$kQuestionsPerLevel para avanzar · Total: $totalScore/$totalAnswered',
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.85),
+                  fontSize: 11,
                 ),
               ),
             ),
@@ -642,32 +808,16 @@ Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional ni bloques 
   Widget _buildBody() {
     if (isLoading) {
       return Center(
-        child: TweenAnimationBuilder(
-          tween: Tween<double>(begin: 0.8, end: 1.2),
-          duration: const Duration(milliseconds: 800),
-          curve: Curves.easeInOut,
-          builder: (context, scale, child) {
-            return Transform.scale(scale: scale, child: child);
-          },
-          onEnd: () {
-            if (mounted && isLoading) setState(() {});
-          },
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.smart_toy, size: 64, color: Colors.white),
-              const SizedBox(height: 24),
-              Text(
-                _currentLoadingPhrase,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CircularProgressIndicator(color: Colors.white),
+            const SizedBox(height: 16),
+            Text(
+              'Generando pregunta con IA...',
+              style: TextStyle(color: Colors.white.withOpacity(0.9)),
+            ),
+          ],
         ),
       );
     }
@@ -705,21 +855,7 @@ Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional ni bloques 
     if (currentQuestion == null) return const SizedBox.shrink();
 
     return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 600),
-      switchInCurve: Curves.easeOutBack,
-      switchOutCurve: Curves.easeIn,
-      transitionBuilder: (child, animation) {
-        return FadeTransition(
-          opacity: animation,
-          child: SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(0.0, 0.2),
-              end: Offset.zero,
-            ).animate(animation),
-            child: child,
-          ),
-        );
-      },
+      duration: const Duration(milliseconds: 350),
       child: SingleChildScrollView(
         key: ValueKey(currentQuestion!.question),
         child: Column(
@@ -752,7 +888,7 @@ Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional ni bloques 
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.15),
+            color: Colors.black.withOpacity(0.25),
             blurRadius: 20,
             offset: const Offset(0, 10),
           ),
@@ -794,13 +930,12 @@ Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional ni bloques 
     final baseColor = kOptionColors[index % kOptionColors.length];
 
     Color bg = baseColor;
+    const Color fg = Colors.white;
     double opacity = 1.0;
-    double scale = 1.0;
 
     if (answered) {
       if (index == currentQuestion!.correctIndex) {
         bg = kColorSuccess;
-        scale = 1.02;
       } else if (index == selectedIndex) {
         bg = kColorError;
       } else {
@@ -810,72 +945,63 @@ Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional ni bloques 
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6.0),
-      child: AnimatedScale(
-        scale: scale,
+      child: AnimatedOpacity(
         duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOutBack,
-        child: AnimatedOpacity(
-          duration: const Duration(milliseconds: 300),
-          opacity: opacity,
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(18),
-              onTap: answered ? null : () => _selectAnswer(index),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                padding: const EdgeInsets.symmetric(
-                  vertical: 16,
-                  horizontal: 18,
-                ),
-                decoration: BoxDecoration(
-                  color: bg,
-                  borderRadius: BorderRadius.circular(18),
-                  boxShadow: [
-                    BoxShadow(
-                      color: bg.withOpacity(0.4),
-                      blurRadius: 10,
-                      offset: const Offset(0, 5),
+        opacity: opacity,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(18),
+            onTap: answered ? null : () => _selectAnswer(index),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 18),
+              decoration: BoxDecoration(
+                color: bg,
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: [
+                  BoxShadow(
+                    color: bg.withOpacity(0.4),
+                    blurRadius: 10,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 32,
+                    height: 32,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.25),
+                      shape: BoxShape.circle,
                     ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 32,
-                      height: 32,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.25),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Text(
-                        letras[index],
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
+                    child: Text(
+                      letras[index],
+                      style: const TextStyle(
+                        color: fg,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Text(
-                        option,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      option,
+                      style: const TextStyle(
+                        color: fg,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                    if (answered && index == currentQuestion!.correctIndex)
-                      const Icon(Icons.check_circle, color: Colors.white),
-                    if (answered &&
-                        index == selectedIndex &&
-                        index != currentQuestion!.correctIndex)
-                      const Icon(Icons.cancel, color: Colors.white),
-                  ],
-                ),
+                  ),
+                  if (answered && index == currentQuestion!.correctIndex)
+                    const Icon(Icons.check_circle, color: Colors.white),
+                  if (answered &&
+                      index == selectedIndex &&
+                      index != currentQuestion!.correctIndex)
+                    const Icon(Icons.cancel, color: Colors.white),
+                ],
               ),
             ),
           ),
@@ -888,9 +1014,7 @@ Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional ni bloques 
     final correct = selectedIndex == currentQuestion!.correctIndex;
     final color = correct ? kColorSuccess : kColorWarning;
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 400),
-      curve: Curves.easeInOut,
+    return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -913,7 +1037,7 @@ Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional ni bloques 
                 Text(
                   correct
                       ? '¡Correcto! 🎉'
-                      : 'La respuesta era "${currentQuestion!.options[currentQuestion!.correctIndex]}"',
+                      : 'La respuesta correcta era "${currentQuestion!.options[currentQuestion!.correctIndex]}"',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     color: color,
@@ -927,6 +1051,15 @@ Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional ni bloques 
                 ),
               ],
             ),
+          ),
+          IconButton(
+            icon: Icon(Icons.volume_up, color: color),
+            onPressed: () {
+              final msg = correct
+                  ? '¡Correcto! La razón es: ${currentQuestion!.explanation}'
+                  : 'La respuesta correcta era ${currentQuestion!.options[currentQuestion!.correctIndex]}. La razón es: ${currentQuestion!.explanation}';
+              _speak(msg);
+            },
           ),
         ],
       ),
@@ -961,7 +1094,7 @@ Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional ni bloques 
               children: [
                 Text(
                   isLastQuestionOfLevel
-                      ? 'Ver resultado'
+                      ? 'Ver resultado del nivel'
                       : 'Siguiente pregunta',
                   style: const TextStyle(
                     color: Colors.white,
